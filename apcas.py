@@ -19,7 +19,7 @@
 """
 
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 
 
@@ -31,7 +31,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma, FAISS
 from langchain_google_genai.llms import GoogleGenerativeAI
 from langchain_core.documents.base import Document
-from langchain_core.prompts import PromptTemplate
+from azure_setup import get_response_from_azure_openai
 
 from typing import List, Self, Optional
 from dotenv import load_dotenv
@@ -50,7 +50,7 @@ class APCAS:
 
 
     __name__    = "APCAS (Any PDF Chatting AI System)"
-    __model__   = 'Gemini 1.5 Flash'
+    __model__   = 'GPT-4o mini'
     __version__ = VERSION # 1.0.0
 
 
@@ -66,14 +66,12 @@ class APCAS:
         self.testing = testing_phase
         
         ## defining instance variables
-        self.model = None
-        self.loaded_text: None | List[Document] = None
-        self.chunks: None | List = None
         self.embedding_model = None 
-        self.vector_store: None | Chroma = None
-        self.template = None
-        self.retriever: None | Chroma.as_retriever = None
+        self.chunks: None | List = None
         self.pdf_path: None | str = pdf_path
+        self.vector_store: None | Chroma = None
+        self.loaded_text: None | List[Document] = None
+        self.retriever: None | Chroma.as_retriever = None
 
         try:
             ## loading environment
@@ -105,25 +103,6 @@ class APCAS:
         if self.testing:
             print('Path updated')
 
-
-
-    def load_model(self, is_return: bool = False) -> None | GoogleGenerativeAI :
-        ''' this will return the llm after loading '''
-
-        ## creating object instance
-        llm = GoogleGenerativeAI(
-            name = 'apcas 1.0.0',
-            model = 'gemini-1.5-flash', 
-            verbose = False,
-            max_tokens = 1000,
-            temperature = 0.3
-        )
-
-        ## updating model
-        self.model = llm
-
-        if is_return:
-            return llm
 
 
 
@@ -268,44 +247,8 @@ class APCAS:
         ## setup retriever
         self.create_retriever()
 
-        ## model loading
-        self.load_model()
-
-        ## template loading
-        self.load_template()
-
-
         print("All setup complete.")
 
-
-
-
-
-
-
-    def load_template(self) -> PromptTemplate :
-        """Loading common prompt template
-
-        Returns:
-            PromptTemplate: Template for Augmentation 
-        """
-
-        ## creating template
-        template = PromptTemplate(
-            name = 'APCAS common query template',
-            template = """
-            You are a good assistant.
-            Answer the query from the given context ONLY, if no answer will found then say you don't know.
-
-            context:  {context}
-            query: {query}
-            """,
-            input_variables = ['context','query'],
-            validate_template = True
-        )
-
-        ## updating template
-        self.template = template
 
 
 
@@ -330,13 +273,7 @@ class APCAS:
         ## getting context
         context = "\n\n".join([doc.page_content for doc in self.retriever.invoke(query)])
 
-        ## final prompt
-        final_prompt: PromptTemplate = self.template.invoke({
-            'context': context,
-            'query': query
-        })
-
-        response: str = self.model.invoke(final_prompt)
+        response: str = get_response_from_azure_openai(context, query)
 
         return response
     
@@ -377,31 +314,6 @@ if __name__ == "__main__":
     path = '/home/archit-elitebook/Downloads/(DT)Data Mining 4th sem Question Bank Solution 2K25 (1).pdf'
     apcas = APCAS(pdf_path=path, testing_phase=False)
     apcas.run_on_terminal()
-
-    # print(apcas.loaded_text)
-
-    # apcas.update_pdf_path('/home/archit-elitebook/Downloads/(DT)Data Mining 4th sem Question Bank Solution 2K25 (1).pdf')
-
-    # apcas.load_pdf()
-
-    # apcas.split_text()
-
-    # # print(type(apcas.chunks))
-    # # for i in apcas.chunks[-3:]:
-    # #     print(type(i), i,end=f"\n\n{'-'*100}\n")
-
-    # apcas.create_vector_store()
-
-    # apcas.create_retriever()
-
-    # apcas.load_model()
-
-    # apcas.load_template()
-
-    # print(apcas.retriever.invoke("What is data mining", k=3))
-
-    # print(apcas.run("what is knn"))
-    # print(apcas.run("what is genai"))
 
 
 
