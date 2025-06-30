@@ -2,7 +2,7 @@
                     APCAS (Any PDF Chatting AI System)
                     =========================================================================================================
 
-                    VERSION = 1.0.0
+                    VERSION = 1.1.0
 
                     APCAS stands for Any PDF Chatting AI System, it is basically a RAG (Retrieval Augmented Generation) based
                     application, that optimized for chatting with any PDF in an efficint way, still it is not a professional 
@@ -19,7 +19,7 @@
 """
 
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 
 
@@ -29,11 +29,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma, FAISS
-from langchain_google_genai.llms import GoogleGenerativeAI
 from langchain_core.documents.base import Document
-from langchain_core.prompts import PromptTemplate
+from azure_setup import get_response_from_azure_openai
+from gemini_setup import get_response_from_gemini_15_flash
 
-from typing import List, Self, Optional
+from typing import List, Self, Optional, Literal
 from dotenv import load_dotenv
 
 import os
@@ -51,14 +51,15 @@ class APCAS:
 
     __name__    = "APCAS (Any PDF Chatting AI System)"
     __model__   = 'Gemini 1.5 Flash'
-    __version__ = VERSION # 1.0.0
+    __version__ = VERSION # 1.1.0
 
 
 
     def __init__(
             self, 
             pdf_path: Optional[str] = None,
-            testing_phase: bool = False
+            testing_phase: bool = False,
+            model: Literal['gemini-1.5-flash', 'gpt-4o-mini'] = None
         ) -> Self :
 
         ''' Constructor '''
@@ -66,14 +67,14 @@ class APCAS:
         self.testing = testing_phase
         
         ## defining instance variables
-        self.model = None
-        self.loaded_text: None | List[Document] = None
-        self.chunks: None | List = None
         self.embedding_model = None 
-        self.vector_store: None | Chroma = None
-        self.template = None
-        self.retriever: None | Chroma.as_retriever = None
+        self.chunks: None | List = None
+        self.get_response_from_model = None
         self.pdf_path: None | str = pdf_path
+        self.vector_store: None | Chroma = None
+        self.loaded_text: None | List[Document] = None
+        self.retriever: None | Chroma.as_retriever = None
+        self.model_name: Literal['gemini-1.5-flash','gpt-4o-mini'] = model
 
         try:
             ## loading environment
@@ -90,6 +91,19 @@ class APCAS:
             print('APCAS: object created successfully!')
 
     
+
+
+    def set_model_name(self, model_name: Literal['gemini-1.5-flash','gpt-4o-mini'] ) -> None:
+        """ This will set the model name according to user
+
+        Args:
+            model_name (Literal['gemini-1.5-flash', 'gpt-4o-mini']): Currently APCAS working have two LLMs Gemini-1.5-flash and GPT-4o mini
+        """
+
+        self.model_name = model_name
+
+
+
     
 
     def update_pdf_path(self, path: str) -> None:
@@ -105,25 +119,6 @@ class APCAS:
         if self.testing:
             print('Path updated')
 
-
-
-    def load_model(self, is_return: bool = False) -> None | GoogleGenerativeAI :
-        ''' this will return the llm after loading '''
-
-        ## creating object instance
-        llm = GoogleGenerativeAI(
-            name = 'apcas 1.0.0',
-            model = 'gemini-1.5-flash', 
-            verbose = False,
-            max_tokens = 1000,
-            temperature = 0.3
-        )
-
-        ## updating model
-        self.model = llm
-
-        if is_return:
-            return llm
 
 
 
@@ -210,10 +205,6 @@ class APCAS:
             embedding = self.embedding_model
         )
 
-        # ## saving vector store
-        # new_dir = os.path.join(os.getcwd(), 'APCAS_FAISS_Database')
-        # vector_store.save_local(new_dir)
-
         ## updating vactor store
         self.vector_store = vector_store
 
@@ -253,7 +244,7 @@ class APCAS:
 
 
 
-    def setup(self) -> None:
+    def setup(self, model: Literal['gemini-1.5-flash', 'gpt-4o-mini'] = None) -> None:
         """ It will call the all neccessary functions and making sure the model working """
         
         ## loading pdf
@@ -269,11 +260,7 @@ class APCAS:
         self.create_retriever()
 
         ## model loading
-        self.load_model()
-
-        ## template loading
-        self.load_template()
-
+        self.setup_model(model=model)
 
         print("All setup complete.")
 
@@ -282,30 +269,20 @@ class APCAS:
 
 
 
+    def setup_model(self, model: Literal['gemini-1.5-flash','gpt-4o-mini'] = None) :
+        """ This will setup the appropriate LLM model
 
-    def load_template(self) -> PromptTemplate :
-        """Loading common prompt template
-
-        Returns:
-            PromptTemplate: Template for Augmentation 
+        Args:
+            model_name (Literal['gemini-1.5-flash', 'gpt-4o-mini']): Currently APCAS working have two LLMs Gemini-1.5-flash and GPT-4o mini
         """
 
-        ## creating template
-        template = PromptTemplate(
-            name = 'APCAS common query template',
-            template = """
-            You are a good assistant.
-            Answer the query from the given context ONLY, if no answer will found then say you don't know.
+        if not model:
+            model = self.model_name
 
-            context:  {context}
-            query: {query}
-            """,
-            input_variables = ['context','query'],
-            validate_template = True
-        )
+            if not model:
+                raise AttributeError("Give value to the attribute `model` while you don't call `obj.set_model_name()`")
 
-        ## updating template
-        self.template = template
+        self.get_response_from_model = get_response_from_gemini_15_flash if model=='gemini-1.5-flash' else get_response_from_azure_openai
 
 
 
@@ -313,7 +290,7 @@ class APCAS:
 
 
 
-    def run(self, query: str) -> str:
+    def run(self, query: str, model: Literal['gemini-1.5-flash','gpt-4o-mini'] = None) -> str:
         """Get response of your single query
 
         Args:
@@ -323,20 +300,24 @@ class APCAS:
             str: response of the AI system
         """
 
+        if not model:
+            model = self.model_name
+
+            if not model:
+                raise AttributeError("Give value to the attribute `model` while you don't call `obj.set_model_name()`")
+            
+        ## update `setup model` according to user choice
+        self.setup_model(model=model)
+
+
         ## cheking for valid retriver
         if self.retriever is None:
-            raise Exception("Please activate retriver first! \nYou can call `obj.create_retriever()`")
+            raise Exception("Please activate retriver first! \nYou can call `obj.create_retriever()` or call `obj.setup()`")
         
         ## getting context
         context = "\n\n".join([doc.page_content for doc in self.retriever.invoke(query)])
 
-        ## final prompt
-        final_prompt: PromptTemplate = self.template.invoke({
-            'context': context,
-            'query': query
-        })
-
-        response: str = self.model.invoke(final_prompt)
+        response = self.get_response_from_model(context, query)
 
         return response
     
@@ -375,7 +356,7 @@ class APCAS:
 if __name__ == "__main__":
 
     path = '/home/archit-elitebook/Downloads/(DT)Data Mining 4th sem Question Bank Solution 2K25 (1).pdf'
-    apcas = APCAS(pdf_path=path, testing_phase=False)
+    apcas = APCAS(pdf_path=path, testing_phase=False, model='gpt-4o-mini')
     apcas.run_on_terminal()
 
     # print(apcas.loaded_text)
@@ -402,7 +383,6 @@ if __name__ == "__main__":
 
     # print(apcas.run("what is knn"))
     # print(apcas.run("what is genai"))
-
 
 
 
