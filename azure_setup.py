@@ -14,6 +14,15 @@ client = AzureOpenAI(
 
 
 def get_response_from_azure_openai(context: str, query: str) -> str:
+    """ This will return the response from GPT model 4o mini
+
+    Args:
+        context (str): contextual text (get from retriever)
+        query (str): user query 
+
+    Returns:
+        str: response from the LLM
+    """
 
     response = client.chat.completions.create(
         messages=[
@@ -32,7 +41,7 @@ def get_response_from_azure_openai(context: str, query: str) -> str:
         model=deployment
     )
 
-    return response.choices[0].message.content
+    return f"<GPT 4o mini> {response.choices[0].message.content}"
 
 
 
