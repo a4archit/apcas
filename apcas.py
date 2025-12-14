@@ -294,7 +294,7 @@ class APCAS:
         """Get response of your single query
 
         Args:
-            query (str): Any question from your side regarding provided PDF
+            query (str): Any question from your side regarding provided PDF 
 
         Returns:
             str: response of the AI system
