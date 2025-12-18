@@ -61,7 +61,7 @@ streamlit run main_app.py
 ![working flow](./materials/working_flow_diagram.png)
 
 Example:
-```
+```python
   from apcas import APCAS
   # creating model instance
   model = APCAS('path_of_pdf')
